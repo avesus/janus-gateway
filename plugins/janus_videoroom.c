@@ -4175,7 +4175,6 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "This is a PERC-only room");
 					goto error;
 				}
-				janus_mutex_lock(&videoroom->participants_mutex);
 				g_hash_table_iter_init(&iter, videoroom->participants);
 				while (!g_atomic_int_get(&videoroom->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
 					janus_videoroom_publisher *p = value;
