@@ -184,6 +184,7 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER			(1 << 15)
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER			(1 << 16)
 #define JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT			(1 << 17)
+#define JANUS_ICE_HANDLE_WEBRTC_PERC_LITE			(1 << 18)
 
 
 /*! \brief Janus media statistics
@@ -449,6 +450,10 @@ struct janus_ice_component {
 	GSource *dtlsrt_source;
 	/*! \brief DTLS-SRTP stack */
 	janus_dtls_srtp *dtls;
+	/*! \brief Whether we should do NACKs (in or out) for audio */
+	gboolean do_audio_nacks;
+	/*! \brief Whether we should do NACKs (in or out) for video */
+	gboolean do_video_nacks;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
 	GList *retransmit_buffer;
 	/*! \brief Last time a log message about sending retransmits was printed */

@@ -137,7 +137,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 \verbatim
 {
 	"request" : "edit",
-	"room" : <unique numeric ID of the room to destroy>,
+	"room" : <unique numeric ID of the room to edit>,
 	"secret" : "<room secret, mandatory if configured>",
 	"new_description" : "<new pretty name of the room, optional>",
 	"new_secret" : "<new password required to edit/destroy the room, optional>",
@@ -723,7 +723,7 @@ static struct janus_json_parameter stop_rtp_forward_parameters[] = {
 /* Static configuration instance */
 static janus_config *config = NULL;
 static const char *config_folder = NULL;
-static janus_mutex config_mutex;
+static janus_mutex config_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -1022,7 +1022,6 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 	config_folder = config_path;
 	if(config != NULL)
 		janus_config_print(config);
-	janus_mutex_init(&config_mutex);
 	
 	rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_audiobridge_room_destroy);
 	janus_mutex_init(&rooms_mutex);
@@ -3067,7 +3066,7 @@ static void *janus_audiobridge_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-audio", recording_base);
-							participant->arc = janus_recorder_create(NULL, "opus", filename);
+							participant->arc = janus_recorder_create(NULL, "opus", filename, FALSE);
 							if(participant->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this participant!\n");
@@ -3076,7 +3075,7 @@ static void *janus_audiobridge_handler(void *data) {
 							/* Build a filename */
 							g_snprintf(filename, 255, "audiobridge-%"SCNu64"-%"SCNu64"-%"SCNi64"-audio",
 								participant->user_id, participant->room->room_id, now);
-							participant->arc = janus_recorder_create(NULL, "opus", filename);
+							participant->arc = janus_recorder_create(NULL, "opus", filename, FALSE);
 							if(participant->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this participant!\n");
@@ -3491,6 +3490,7 @@ static void *janus_audiobridge_handler(void *data) {
 		/* Any SDP to handle? */
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+		gboolean perc = json_is_true(json_object_get(msg->jsep, "perc"));
 		if(!msg_sdp) {
 			int ret = gateway->push_event(msg->handle, &janus_audiobridge_plugin, msg->transaction, event, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
@@ -3498,6 +3498,14 @@ static void *janus_audiobridge_handler(void *data) {
 		} else {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
 			/* Prepare an SDP answer */
+			if(perc) {
+				/* We can't accept a PERC client, we need to access unencrypted media frames to decode/mix */
+				json_decref(event);
+				JANUS_LOG(LOG_ERR, "PERC clients are unsupported by this plugin\n");
+				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_SDP;
+				g_snprintf(error_cause, 512, "PERC clients are unsupported by this plugin");
+				goto error;
+			}
 			const char *type = "answer";
 			char error_str[512];
 			janus_sdp *offer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));

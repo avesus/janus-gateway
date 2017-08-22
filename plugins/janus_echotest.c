@@ -184,6 +184,7 @@ typedef struct janus_echotest_session {
 	gboolean has_data;
 	gboolean audio_active;
 	gboolean video_active;
+	gboolean perc;
 	uint32_t bitrate, peer_bitrate;
 	janus_rtp_switching_context context;
 	uint32_t ssrc[3];		/* Only needed in case VP8 simulcasting is involved */
@@ -424,6 +425,8 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 	json_t *info = json_object();
 	json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
 	json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
+	if(session->perc)
+		json_object_set_new(info, "perc", json_true());
 	json_object_set_new(info, "bitrate", json_integer(session->bitrate));
 	json_object_set_new(info, "peer-bitrate", json_integer(session->peer_bitrate));
 	if(session->ssrc[0] != 0) {
@@ -867,6 +870,9 @@ static void *janus_echotest_handler(void *data) {
 		/* Parse request */
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+		gboolean perc = json_is_true(json_object_get(msg->jsep, "perc"));
+		if(perc)
+			session->perc = perc;
 		json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 		if(msg_simulcast) {
 			JANUS_LOG(LOG_VERB, "EchoTest client is going to do simulcasting\n");
@@ -1039,7 +1045,7 @@ static void *janus_echotest_handler(void *data) {
 					if(recording_base) {
 						/* Use the filename and path we have been provided */
 						g_snprintf(filename, 255, "%s-audio", recording_base);
-						session->arc = janus_recorder_create(NULL, "opus", filename);
+						session->arc = janus_recorder_create(NULL, "opus", filename, session->perc);
 						if(session->arc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
@@ -1047,7 +1053,7 @@ static void *janus_echotest_handler(void *data) {
 					} else {
 						/* Build a filename */
 						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-audio", session, now);
-						session->arc = janus_recorder_create(NULL, "opus", filename);
+						session->arc = janus_recorder_create(NULL, "opus", filename, session->perc);
 						if(session->arc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
@@ -1060,7 +1066,7 @@ static void *janus_echotest_handler(void *data) {
 					if(recording_base) {
 						/* Use the filename and path we have been provided */
 						g_snprintf(filename, 255, "%s-video", recording_base);
-						session->vrc = janus_recorder_create(NULL, "vp8", filename);
+						session->vrc = janus_recorder_create(NULL, "vp8", filename, session->perc);
 						if(session->vrc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
@@ -1068,7 +1074,7 @@ static void *janus_echotest_handler(void *data) {
 					} else {
 						/* Build a filename */
 						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video", session, now);
-						session->vrc = janus_recorder_create(NULL, "vp8", filename);
+						session->vrc = janus_recorder_create(NULL, "vp8", filename, session->perc);
 						if(session->vrc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
@@ -1086,7 +1092,7 @@ static void *janus_echotest_handler(void *data) {
 					if(recording_base) {
 						/* Use the filename and path we have been provided */
 						g_snprintf(filename, 255, "%s-data", recording_base);
-						session->drc = janus_recorder_create(NULL, "text", filename);
+						session->drc = janus_recorder_create(NULL, "text", filename, session->perc);
 						if(session->drc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open a text data recording file for this EchoTest user!\n");
@@ -1094,7 +1100,7 @@ static void *janus_echotest_handler(void *data) {
 					} else {
 						/* Build a filename */
 						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-data", session, now);
-						session->drc = janus_recorder_create(NULL, "text", filename);
+						session->drc = janus_recorder_create(NULL, "text", filename, session->perc);
 						if(session->drc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open a text data recording file for this EchoTest user!\n");

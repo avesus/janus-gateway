@@ -125,7 +125,7 @@ typedef struct janus_http_msg {
 	json_t *response;					/* The response from the core */
 } janus_http_msg;
 static GHashTable *messages = NULL;
-static janus_mutex messages_mutex;
+static janus_mutex messages_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void janus_http_msg_destroy(void *msg) {
 	if(!msg)

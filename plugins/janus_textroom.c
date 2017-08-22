@@ -185,7 +185,7 @@ static struct janus_json_parameter message_parameters[] = {
 /* Static configuration instance */
 static janus_config *config = NULL;
 static const char *config_folder = NULL;
-static janus_mutex config_mutex;
+static janus_mutex config_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;

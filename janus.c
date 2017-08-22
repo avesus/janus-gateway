@@ -93,7 +93,8 @@ static struct janus_json_parameter attach_parameters[] = {
 	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"opaque_id", JSON_STRING, 0},
 	{"force-bundle", JANUS_JSON_BOOL, 0},
-	{"force-rtcp-mux", JANUS_JSON_BOOL, 0}
+	{"force-rtcp-mux", JANUS_JSON_BOOL, 0},
+	{"perc", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter body_parameters[] = {
 	{"body", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
@@ -1048,6 +1049,7 @@ int janus_process_incoming_request(janus_request *request) {
 		json_t *plugin = json_object_get(root, "plugin");
 		gboolean force_bundle = json_is_true(json_object_get(root, "force-bundle"));
 		gboolean force_rtcp_mux = json_is_true(json_object_get(root, "force-rtcp-mux"));
+		gboolean perc = json_is_true(json_object_get(root, "perc"));
 		const gchar *plugin_text = json_string_value(plugin);
 		janus_plugin *plugin_t = janus_plugin_find(plugin_text);
 		if(plugin_t == NULL) {
@@ -1080,6 +1082,10 @@ int janus_process_incoming_request(janus_request *request) {
 		handle->force_rtcp_mux = force_rtcp_mux;
 		/* We increase the counter as this request is using the handle */
 		janus_refcount_increase(&handle->ref);
+		if(perc) {
+			/* We'll need to assume PERC for all PeerConnections, and notify plugins accordingly */
+			janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PERC_LITE);
+		}
 		/* Attach to the plugin */
 		int error = 0;
 		if((error = janus_ice_handle_attach_plugin(session, handle, plugin_t)) != 0) {
@@ -1384,6 +1390,9 @@ int janus_process_incoming_request(janus_request *request) {
 					json_object_set(body_jsep, "simulcast", simulcast);
 				}
 			}
+			/* Is PERC Lite in use too? */
+			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PERC_LITE))
+				json_object_set(body_jsep, "perc", json_true());
 		};
 		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle,
 			g_strdup((char *)transaction_text), body, body_jsep);
@@ -2126,6 +2135,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(flags, "has-audio", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO) ? json_true() : json_false());
 		json_object_set_new(flags, "has-video", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO) ? json_true() : json_false());
 		json_object_set_new(flags, "plan-b", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B) ? json_true() : json_false());
+		json_object_set_new(flags, "perc-lite", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PERC_LITE) ? json_true() : json_false());
 		json_object_set_new(flags, "cleaning", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING) ? json_true() : json_false());
 		json_object_set_new(info, "flags", flags);
 		if(handle->agent) {
