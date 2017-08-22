@@ -31,6 +31,31 @@ glib_version=2.34
 ssl_version=1.0.1
 
 ##
+# Post-processing
+##
+
+AC_ARG_ENABLE([post-processing],
+              [AS_HELP_STRING([--enable-post-processing],
+                              [Enable building post-processing utility])],
+              [],
+              [enable_post_processing=no])
+
+AS_IF([test "x$enable_post_processing" = "xyes"],
+      [PKG_CHECK_MODULES([POST_PROCESSING],
+                         [
+                           glib-2.0,
+                           jansson,
+                           libavutil,
+                           libavcodec,
+                           libavformat,
+                           ogg
+                           libcrypto
+                         ])
+      ])
+
+AM_CONDITIONAL([ENABLE_POST_PROCESSING], [test "x$enable_post_processing" = "xyes"])
+
+##
 # Janus
 ##
 
@@ -233,6 +258,8 @@ AS_IF([test "x$enable_libsrtp2" != "xno"],
                                       [
                                         AC_DEFINE(HAVE_SRTP_2)
                                         JANUS_MANUAL_LIBS+=" -lsrtp2"
+                                        POST_PROCESSING_MANUAL_LIBS+=" -lsrtp2"
+                                        AC_SUBST(POST_PROCESSING_MANUAL_LIBS)
                                         enable_libsrtp2=yes
                                         AM_CONDITIONAL([ENABLE_LIBSRTP_2], true)
                                       ],
@@ -254,6 +281,8 @@ AM_COND_IF([ENABLE_LIBSRTP_2],
                            AC_CHECK_HEADER([srtp/srtp.h],
                                            [
                                              JANUS_MANUAL_LIBS+=" -lsrtp"
+                                             POST_PROCESSING_MANUAL_LIBS+=" -lsrtp"
+                                             AC_SUBST(POST_PROCESSING_MANUAL_LIBS)
                                              enable_libsrtp2=no
                                              PKG_CHECK_MODULES([SRTP15X],
                                                                [
@@ -576,30 +605,7 @@ PKG_CHECK_MODULES([EVENTS],
                   ])
 
 
-##
-# Post-processing
-##
-
-AC_ARG_ENABLE([post-processing],
-              [AS_HELP_STRING([--enable-post-processing],
-                              [Enable building post-processing utility])],
-              [],
-              [enable_post_processing=no])
-
-AS_IF([test "x$enable_post_processing" = "xyes"],
-      [PKG_CHECK_MODULES([POST_PROCESSING],
-                         [
-                           glib-2.0,
-                           jansson,
-                           libavutil,
-                           libavcodec,
-                           libavformat,
-                           ogg
-                         ])
-      ])
-
 AM_CONDITIONAL([WITH_SOURCE_DATE_EPOCH], [test "x$SOURCE_DATE_EPOCH" != "x"])
-AM_CONDITIONAL([ENABLE_POST_PROCESSING], [test "x$enable_post_processing" = "xyes"])
 
 AC_CONFIG_FILES([
   Makefile

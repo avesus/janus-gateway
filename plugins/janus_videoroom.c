@@ -58,6 +58,8 @@ description = This is my awesome room
 is_private = yes|no (private rooms don't appear when you do a 'list' request)
 secret = <optional password needed for manipulating (e.g. destroying) the room>
 pin = <optional password needed for joining the room>
+perc = yes|no (whether this room will be for PERC participants, meaning
+             payloads will be encrypted and so will recordings, default=no)
 require_pvtid = yes|no (whether subscriptions are required to provide a valid
              a valid private_id to associate with a publisher, default=no)
 publishers = <max number of concurrent senders> (e.g., 6 for a video
@@ -225,6 +227,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"allowed", JSON_ARRAY, 0},
 	{"secret", JSON_STRING, 0},
 	{"pin", JSON_STRING, 0},
+	{"perc", JANUS_JSON_BOOL, 0},
 	{"require_pvtid", JANUS_JSON_BOOL, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"fir_freq", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -487,6 +490,7 @@ typedef struct janus_videoroom {
 	gchar *room_pin;			/* Password needed to join this room, if any */
 	gboolean is_private;		/* Whether this room is 'private' (as in hidden) or not */
 	gboolean require_pvtid;		/* Whether subscriptions in this room require a private_id */
+	gboolean perc;				/* Whether this is a PERC room (encrypted payloads Janus can't access) */
 	int max_publishers;			/* Maximum number of concurrent publishers */
 	uint32_t bitrate;			/* Global bitrate limit */
 	uint16_t fir_freq;			/* Regular FIR frequency (0=disabled) */
@@ -831,6 +835,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *priv = janus_config_get_item(cat, "is_private");
 			janus_config_item *secret = janus_config_get_item(cat, "secret");
 			janus_config_item *pin = janus_config_get_item(cat, "pin");
+			janus_config_item *perc = janus_config_get_item(cat, "perc");
 			janus_config_item *req_pvtid = janus_config_get_item(cat, "require_pvtid");
 			janus_config_item *bitrate = janus_config_get_item(cat, "bitrate");
 			janus_config_item *maxp = janus_config_get_item(cat, "publishers");
@@ -862,6 +867,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				videoroom->room_pin = g_strdup(pin->value);
 			}
 			videoroom->is_private = priv && priv->value && janus_is_true(priv->value);
+			videoroom->perc = perc && perc->value && janus_is_true(perc->value);
 			videoroom->require_pvtid = req_pvtid && req_pvtid->value && janus_is_true(req_pvtid->value);
 			videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
 			if(maxp != NULL && maxp->value != NULL)
@@ -971,6 +977,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				videoroom->require_pvtid ? "required" : "optional");
 			if(videoroom->record) {
 				JANUS_LOG(LOG_VERB, "  -- Room is going to be recorded in %s\n", videoroom->rec_dir ? videoroom->rec_dir : "the current folder");
+			}
+			if(videoroom->perc) {
+				JANUS_LOG(LOG_WARN, "  -- Room is going to be for PERC participants only\n");
 			}
 			cl = cl->next;
 		}
@@ -1382,6 +1391,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_t *req_pvtid = json_object_get(root, "require_pvtid");
 		json_t *secret = json_object_get(root, "secret");
 		json_t *pin = json_object_get(root, "pin");
+		json_t *perc = json_object_get(root, "perc");
 		json_t *bitrate = json_object_get(root, "bitrate");
 		json_t *fir_freq = json_object_get(root, "fir_freq");
 		json_t *publishers = json_object_get(root, "publishers");
@@ -1489,6 +1499,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		videoroom->room_name = description;
 		videoroom->is_private = is_private ? json_is_true(is_private) : FALSE;
 		videoroom->require_pvtid = req_pvtid ? json_is_true(req_pvtid) : FALSE;
+		videoroom->perc = perc ? json_is_true(perc) : FALSE;
 		if(secret)
 			videoroom->room_secret = g_strdup(json_string_value(secret));
 		if(pin)
@@ -1600,6 +1611,9 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		if(videoroom->record) {
 			JANUS_LOG(LOG_VERB, "  -- Room is going to be recorded in %s\n", videoroom->rec_dir ? videoroom->rec_dir : "the current folder");
 		}
+		if(videoroom->perc) {
+			JANUS_LOG(LOG_WARN, "  -- Room is going to be for PERC participants only\n");
+		}
 		if(save) {
 			/* This room is permanent: save to the configuration file too
 			 * FIXME: We should check if anything fails... */
@@ -1631,6 +1645,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				janus_config_add_item(config, cat, "secret", videoroom->room_secret);
 			if(videoroom->room_pin)
 				janus_config_add_item(config, cat, "pin", videoroom->room_pin);
+			if(videoroom->perc)
+				janus_config_add_item(config, cat, "perc", "yes");
 			if(videoroom->record)
 				janus_config_add_item(config, cat, "record", "yes");
 			if(videoroom->rec_dir)
@@ -2888,7 +2904,7 @@ static void janus_videoroom_recorder_create(janus_videoroom_participant *partici
 			/* Use the filename and path we have been provided */
 			g_snprintf(filename, 255, "%s-audio", participant->recording_base);
 			participant->arc = janus_recorder_create(participant->room->rec_dir,
-				janus_videoroom_audiocodec_name(participant->room->acodec), filename);
+				janus_videoroom_audiocodec_name(participant->room->acodec), filename, participant->room->perc);
 			if(participant->arc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 			}
@@ -2897,7 +2913,7 @@ static void janus_videoroom_recorder_create(janus_videoroom_participant *partici
 			g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-audio",
 				participant->room->room_id, participant->user_id, now);
 			participant->arc = janus_recorder_create(participant->room->rec_dir,
-				janus_videoroom_audiocodec_name(participant->room->acodec), filename);
+				janus_videoroom_audiocodec_name(participant->room->acodec), filename, participant->room->perc);
 			if(participant->arc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 			}
@@ -2909,7 +2925,7 @@ static void janus_videoroom_recorder_create(janus_videoroom_participant *partici
 			/* Use the filename and path we have been provided */
 			g_snprintf(filename, 255, "%s-video", participant->recording_base);
 			participant->vrc = janus_recorder_create(participant->room->rec_dir,
-				janus_videoroom_videocodec_name(participant->room->vcodec), filename);
+				janus_videoroom_videocodec_name(participant->room->vcodec), filename, participant->room->perc);
 			if(participant->vrc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 			}
@@ -2918,7 +2934,7 @@ static void janus_videoroom_recorder_create(janus_videoroom_participant *partici
 			g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-video",
 				participant->room->room_id, participant->user_id, now);
 			participant->vrc = janus_recorder_create(participant->room->rec_dir,
-				janus_videoroom_videocodec_name(participant->room->vcodec), filename);
+				janus_videoroom_videocodec_name(participant->room->vcodec), filename, participant->room->perc);
 			if(participant->vrc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 			}
@@ -2930,7 +2946,7 @@ static void janus_videoroom_recorder_create(janus_videoroom_participant *partici
 			/* Use the filename and path we have been provided */
 			g_snprintf(filename, 255, "%s-data", participant->recording_base);
 			participant->drc = janus_recorder_create(participant->room->rec_dir,
-				"text", filename);
+				"text", filename, participant->room->perc);
 			if(participant->drc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an data recording file for this publisher!\n");
 			}
@@ -2939,7 +2955,7 @@ static void janus_videoroom_recorder_create(janus_videoroom_participant *partici
 			g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-data",
 				participant->room->room_id, participant->user_id, now);
 			participant->drc = janus_recorder_create(participant->room->rec_dir,
-				"text", filename);
+				"text", filename, participant->room->perc);
 			if(participant->drc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an data recording file for this publisher!\n");
 			}
@@ -3994,6 +4010,7 @@ static void *janus_videoroom_handler(void *data) {
 		/* Any SDP to handle? */
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+		gboolean perc = json_is_true(json_object_get(msg->jsep, "perc"));
 		json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 		if(!msg_sdp) {
 			int ret = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, NULL);
@@ -4007,6 +4024,14 @@ static void *janus_videoroom_handler(void *data) {
 				type = "answer";
 			} else if(!strcasecmp(msg_sdp_type, "answer")) {
 				/* We got an answer (from a listener?), no need to negotiate */
+				janus_videoroom_listener *listener = (janus_videoroom_listener *)session->participant;
+				janus_videoroom *videoroom = listener->room;
+				if(videoroom->perc && !perc) {
+					JANUS_LOG(LOG_ERR, "This is a PERC-only room\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP_TYPE;
+					g_snprintf(error_cause, 512, "This is a PERC-only room");
+					goto error;
+				}
 				g_atomic_int_set(&session->hangingup, 0);
 				int ret = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
@@ -4039,6 +4064,12 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				if(videoroom->destroyed) {
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+					goto error;
+				}
+				if(videoroom->perc && !perc) {
+					JANUS_LOG(LOG_ERR, "This is a PERC-only room\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP_TYPE;
+					g_snprintf(error_cause, 512, "This is a PERC-only room");
 					goto error;
 				}
 				janus_mutex_lock(&videoroom->participants_mutex);
